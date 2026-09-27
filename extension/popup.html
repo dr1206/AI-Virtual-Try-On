@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>AI Virtual Try-On</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+
+  <div class="container">
+
+    <h1>Virtual Try-On</h1>
+
+    <p class="subtitle">
+      AI powered shopping assistant
+    </p>
+
+
+    <!-- TABS -->
+
+    <div class="tabs">
+
+      <button class="tab active" data-tab="profile">PROFILE</button>
+
+      <button class="tab" data-tab="shop">SHOP</button>
+
+      <button class="tab" data-tab="history">HISTORY</button>
+
+      <button class="tab" data-tab="wardrobe">WARDROBE</button>
+
+    </div>
+
+
+    <div id="status">
+      Ready to scan this page
+    </div>
+
+
+    <!-- PROFILE TAB -->
+
+    <div class="tab-panel active" id="panel-profile">
+
+    <div class="section">
+
+      <h2>Reusable Digital Fashion Profile</h2>
+
+      <input
+        type="file"
+        id="profileImage"
+        accept="image/*"
+      >
+
+      <div id="profilePreview"></div>
+
+      <p id="profileStatus" class="hint">
+        Upload a profile photo
+      </p>
+
+      <p class="hint">
+        Upload a full-body or upper-body photo
+      </p>
+
+
+      <!-- OPTIONAL PREFERENCES -->
+
+      <div class="pref">
+
+        <label for="stylePreference">Style</label>
+
+        <select id="stylePreference">
+          <option value="">Not set</option>
+          <option value="casual">Casual</option>
+          <option value="formal">Formal</option>
+          <option value="streetwear">Streetwear</option>
+          <option value="sport">Sport</option>
+          <option value="traditional">Traditional</option>
+        </select>
+
+      </div>
+
+
+      <div class="pref">
+
+        <label for="fitPreference">Preferred Fit</label>
+
+        <select id="fitPreference">
+          <option value="">Not set</option>
+          <option value="slim">Slim</option>
+          <option value="regular">Regular</option>
+          <option value="oversized">Oversized</option>
+        </select>
+
+      </div>
+
+
+      <div class="pref">
+
+        <label for="colorPreference">Preferred Color</label>
+
+        <select id="colorPreference">
+          <option value="">Not set</option>
+          <option value="black">Black</option>
+          <option value="white">White</option>
+          <option value="blue">Blue</option>
+          <option value="neutral">Neutral</option>
+          <option value="any">Any</option>
+        </select>
+
+      </div>
+
+
+      <div class="pref">
+
+        <label for="heightInput">Height (optional)</label>
+
+        <input
+          type="text"
+          id="heightInput"
+          placeholder="e.g. 170 cm"
+        >
+
+      </div>
+
+
+      <div class="pref">
+
+        <label for="topSizeInput">Top Size (optional)</label>
+
+        <select id="topSizeInput">
+          <option value="">Not set</option>
+          <option value="XS">XS</option>
+          <option value="S">S</option>
+          <option value="M">M</option>
+          <option value="L">L</option>
+          <option value="XL">XL</option>
+          <option value="XXL">XXL</option>
+        </select>
+
+      </div>
+
+
+      <div class="pref">
+
+        <label for="bottomSizeInput">Bottom Size (optional)</label>
+
+        <select id="bottomSizeInput">
+          <option value="">Not set</option>
+          <option value="XS">XS</option>
+          <option value="S">S</option>
+          <option value="M">M</option>
+          <option value="L">L</option>
+          <option value="XL">XL</option>
+          <option value="XXL">XXL</option>
+          <option value="26">26</option>
+          <option value="28">28</option>
+          <option value="30">30</option>
+          <option value="32">32</option>
+          <option value="34">34</option>
+          <option value="36">36</option>
+          <option value="38">38</option>
+        </select>
+
+      </div>
+
+
+      <p class="hint">
+        These preferences are stored for your own reference. They are
+        not used to estimate body measurements.
+      </p>
+
+
+      <button id="deleteProfile" class="secondary">
+        Delete Profile
+      </button>
+
+    </div>
+
+
+    <!-- PRIVACY -->
+
+    <div class="section">
+
+      <h2>Privacy</h2>
+
+      <p class="hint">
+        Profile photos are stored locally in the extension and are only
+        sent to your own try-on backend when you click Try On. No API
+        keys are stored in the extension.
+      </p>
+
+      <button id="privacyClearHistory" class="secondary">
+        Clear History
+      </button>
+
+      <button id="privacyClearWardrobe" class="secondary">
+        Clear Wardrobe
+      </button>
+
+    </div>
+
+    </div>
+
+
+    <!-- SHOP TAB -->
+
+    <div class="tab-panel" id="panel-shop">
+
+    <button id="detectProducts">
+      Detect Products
+    </button>
+
+
+    <h2>Detected Products</h2>
+
+    <div id="comparePanel"></div>
+
+    <div id="products"></div>
+
+
+    <!-- RESULT -->
+
+    <div id="resultSection">
+
+      <h2>Your Virtual Try-On</h2>
+
+      <div id="progress"></div>
+
+      <div id="result"></div>
+
+    </div>
+
+    </div>
+
+
+    <!-- HISTORY TAB -->
+
+    <div class="tab-panel" id="panel-history">
+
+      <h2>Recent Try-Ons</h2>
+
+      <div id="historyList"></div>
+
+      <button id="clearHistory" class="secondary">
+        Clear History
+      </button>
+
+    </div>
+
+
+    <!-- WARDROBE TAB -->
+
+    <div class="tab-panel" id="panel-wardrobe">
+
+      <h2>My Wardrobe</h2>
+
+      <div id="wardrobeList"></div>
+
+      <button id="clearWardrobe" class="secondary">
+        Clear Wardrobe
+      </button>
+
+    </div>
+
+  </div>
+
+  <script src="popup.js"></script>
+
+</body>
+
+</html>
