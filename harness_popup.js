@@ -174,10 +174,10 @@ check("profile match has no scores or percentages", function () {
 check("quota fallback is still gated on quota in the backend", function () {
   // The banner wording now lives in the UI; the backend only has to
   // keep flagging the quota case correctly.
-  assert.ok(backendSrc.includes("DEMO_NOTICE"),
-    "backend must define DEMO_NOTICE");
   assert.ok(backendSrc.includes("if is_quota_exhausted(e):"),
     "fallback must be gated on quota");
+  assert.ok(backendSrc.includes('"demo": True'),
+    "the quota fallback must be flagged as a demo result");
   // The UI wording is fixed in the extension, not taken from the API.
   const demo = popupSrc.slice(
     popupSrc.indexOf("function showDemoResult("),
@@ -264,7 +264,10 @@ check("IDM-VTON inference untouched", function () {
 
 check("demo fallback is quota-gated", function () {
   assert.ok(backendSrc.includes("def is_quota_exhausted("));
-  assert.ok(backendSrc.includes('"zerogpu" in text or "quota" in text'));
+  // The current backend matches a list of quota keywords rather than a
+  // single inline expression, so assert the keywords themselves.
+  assert.ok(backendSrc.includes('"zerogpu"'), "must detect zerogpu");
+  assert.ok(backendSrc.includes('"quota"'), "must detect quota");
   // The fallback must sit inside the error branch, gated on quota.
   assert.ok(backendSrc.includes("if is_quota_exhausted(e):"));
 });
@@ -272,16 +275,24 @@ check("demo result reuses a stored file, never fabricates", function () {
   assert.ok(backendSrc.includes("def latest_stored_result("));
   assert.ok(backendSrc.includes("os.path.getmtime"));
   assert.ok(backendSrc.includes('"demo": True'));
-  assert.ok(backendSrc.includes("DEMO_NOTICE"));
+  // The fallback must explain itself, not claim a live generation.
+  assert.ok(/quota is exhausted/i.test(backendSrc),
+    "the fallback message must state the quota is the cause");
 });
-check("live success never returns demo flag", function () {
-  // The live success return has no demo key; only the fallback does.
+check("live success is explicitly not a demo result", function () {
+  // The live return marks itself demo: False, so the flag is always
+  // present and can never be mistaken for the quota fallback.
+  assert.ok(backendSrc.includes('"demo": False'),
+    "live success must be explicitly flagged demo: False");
+
   const live = backendSrc.slice(
-    backendSrc.indexOf('"success": True'),
+    backendSrc.indexOf('"success": True,', backendSrc.indexOf("try_on")),
     backendSrc.indexOf("except Exception as e:")
   );
-  assert.ok(!live.includes('"demo"'), "live success must not be flagged demo");
-  assert.ok(!live.includes("latest_stored_result"));
+  assert.ok(live.includes('"demo": False'),
+    "live success must not be flagged demo: True");
+  assert.ok(!live.includes("latest_stored_result"),
+    "live success must not reuse a stored result");
 });
 check("popup labels demo result clearly", function () {
   assert.ok(popupSrc.includes("function showDemoResult("));
@@ -299,11 +310,14 @@ check("demo result is never stored in history", function () {
   assert.ok(!seg.includes("saveToWardrobe"), "demo must not be added to wardrobe");
 });
 check("demo path only runs when backend flags demo", function () {
-  assert.ok(popupSrc.includes("if (data.demo && data.image_url)"));
+  // The response carries the file under "result"/"result_url", so the
+  // demo branch must resolve it rather than read a field the backend
+  // never sends.
+  assert.ok(popupSrc.includes("if (data.demo && resultImageUrl(data))"));
   // A live success returns before the demo branch, so the demo image
   // can never replace a real generation.
   const okIdx = popupSrc.indexOf("buildRecord(");
-  const demoIdx = popupSrc.indexOf("if (data.demo && data.image_url)");
+  const demoIdx = popupSrc.indexOf("if (data.demo && resultImageUrl(data))");
   assert.ok(demoIdx !== -1, "demo branch missing");
   assert.ok(okIdx !== -1);
   // demo branch is checked before success is handled, and success

@@ -68,6 +68,43 @@ const privacyClearWardrobeButton =
   document.getElementById("privacyClearWardrobe");
 
 
+// Resolves the generated-image URL from a /tryon response.
+//
+// The backend returns the file under "result", "result_url" and
+// "full_result_url" ("image_url" was never emitted by the current
+// backend). The value is a PATH such as "/results/tryon_1.png": in an
+// extension popup a leading-slash path would resolve against
+// chrome-extension://<id>/ and 404, so it is made absolute against the
+// FastAPI base URL here. The backend keeps serving /results/*.
+function resultImageUrl(
+  data
+) {
+
+  if (!data) return "";
+
+  const raw =
+    data.full_result_url ||
+    data.result_url ||
+    data.result ||
+    data.image_url ||
+    "";
+
+  const value = String(raw).trim();
+
+  if (!value) return "";
+
+  if (/^https?:\/\//i.test(value)) return value;
+
+  if (value.charAt(0) === "/") {
+
+    return BACKEND_URL + value;
+
+  }
+
+  return BACKEND_URL + "/" + value;
+
+}
+
 const BACKEND_URL =
   "http://127.0.0.1:8000";
 
@@ -1068,11 +1105,32 @@ async function performTryOn(
     let productResponse = null;
 
 
+    // The product image is fetched as a normal image, but AVIF is
+    // deliberately not advertised. Some retail CDNs choose the
+    // response format from this header: AJIO answers with AVIF
+    // whenever the caller offers AVIF support, even for a URL that
+    // ends in .jpg, and the try-on model cannot decode AVIF. Myntra
+    // answers with JPEG either way, so this is safe for it.
+    const productImageHeaders = {
+
+      "Accept":
+        "image/jpeg,image/png,image/webp,image/*;q=0.8,*/*;q=0.5"
+
+    };
+
+
     try {
 
       productResponse =
         await fetch(
-          product.image
+
+          product.image,
+
+          {
+            headers:
+              productImageHeaders
+          }
+
         );
 
     }
@@ -1104,8 +1162,73 @@ async function performTryOn(
 
 
     // --------------------------------------------------------
+    // PRODUCT IMAGE NETWORK METADATA
+    //
+    // Safe metadata only, so a site that fails can be compared
+    // directly against one that works. No cookies, no tokens and no
+    // image contents are ever logged.
+    // --------------------------------------------------------
+
+    console.log(
+      "garment_image source:",
+      {
+
+        urlExtension:
+          urlFileExtension(product.image),
+
+        hostname:
+          urlHostname(product.image),
+
+        httpStatus:
+          productResponse.status,
+
+        contentType:
+          productResponse.headers.get("content-type") || "unknown",
+
+        sizeBytes:
+          productBlob.size
+
+      }
+    );
+
+
+    // --------------------------------------------------------
     // FORM DATA
     // --------------------------------------------------------
+
+    // Safe metadata only. The console now always shows exactly
+    // which person and which product image are being sent.
+    await describeImageBlob(
+      "human_image",
+      "profile." + blobExtension(profileBlob),
+      profileBlob
+    );
+
+    const garmentInfo =
+      await describeImageBlob(
+        "garment_image",
+        "garment." + blobExtension(productBlob),
+        productBlob
+      );
+
+
+    // Anything that cannot be decoded is not a product image at all -
+    // an error page, an empty body and so on. It is stopped here so
+    // that no unusable file is ever handed to the model.
+    if (
+      !productBlob.size ||
+      (
+        garmentInfo &&
+        garmentInfo.dimensions === "unavailable"
+      )
+    ) {
+
+      throw new Error(
+        "Unable to process the selected product image."
+      );
+
+    }
+
 
     const formData =
       new FormData();
@@ -1230,7 +1353,7 @@ async function performTryOn(
       // free GPU quota is exhausted, and it returned a previously
       // generated IDM-VTON result. It is shown with a clear label
       // and is NOT stored as a new try-on.
-      if (data.demo && data.image_url) {
+      if (data.demo && resultImageUrl(data)) {
 
         showDemoResult(
           product,
@@ -1271,7 +1394,9 @@ async function performTryOn(
     const record =
       buildRecord(
         product,
-        data.image_url
+        resultImageUrl(
+          data
+        )
       );
 
 
@@ -1575,7 +1700,178 @@ function blobExtension(
   }
 
 
+  // AVIF must be named honestly rather than falling through to the
+  // PNG default: the bytes really are AVIF, and the backend decides
+  // what to do with them by reading the file, not by its name.
+  if (type.indexOf("avif") !== -1) {
+
+    return "avif";
+
+  }
+
+
+  if (type.indexOf("gif") !== -1) {
+
+    return "gif";
+
+  }
+
+
+  if (type.indexOf("bmp") !== -1) {
+
+    return "bmp";
+
+  }
+
+
   return "png";
+
+}
+
+
+// ============================================================
+// URL INSPECTION HELPERS
+//
+// Read-only helpers used by the product image diagnostics.
+// ============================================================
+
+function urlHostname(
+  url
+) {
+
+  try {
+
+    return new URL(url).hostname;
+
+  }
+
+  catch (error) {
+
+    return "unparsable";
+
+  }
+
+}
+
+
+// The extension the URL itself advertises, if any. This is only what
+// the address claims: the response Content-Type is the authority,
+// which is exactly why both are reported.
+function urlFileExtension(
+  url
+) {
+
+  try {
+
+    const path =
+      new URL(url).pathname;
+
+    const match =
+      path.match(/\.([a-z0-9]{2,5})$/i);
+
+    return match
+      ? match[1].toLowerCase()
+      : "none";
+
+  }
+
+  catch (error) {
+
+    return "none";
+
+  }
+
+}
+
+
+// ============================================================
+// SAFE IMAGE METADATA
+//
+// Logs only the file name, extension, byte size, MIME type and
+// pixel dimensions of an outgoing image. Image contents are never
+// logged. This exists so the console always shows exactly which
+// human and garment image is sent to the backend.
+// ============================================================
+
+async function describeImageBlob(
+  label,
+  fileName,
+  blob
+) {
+
+  if (!blob) {
+
+    console.warn(
+      label + ": no image data"
+    );
+
+    return;
+
+  }
+
+
+  const info = {
+
+    filename: fileName,
+    extension: blobExtension(blob),
+    mimeType: blob.type || "unknown",
+    sizeBytes: blob.size
+
+  };
+
+
+  try {
+
+    const objectUrl =
+      URL.createObjectURL(blob);
+
+    info.dimensions =
+      await new Promise(function (resolve) {
+
+        const probe =
+          new Image();
+
+        probe.onload = function () {
+
+          resolve(
+            probe.naturalWidth +
+            "x" +
+            probe.naturalHeight
+          );
+
+        };
+
+        probe.onerror = function () {
+
+          resolve(
+            "unavailable"
+          );
+
+        };
+
+        probe.src = objectUrl;
+
+      });
+
+    URL.revokeObjectURL(objectUrl);
+
+  } catch (error) {
+
+    info.dimensions =
+      "unavailable";
+
+  }
+
+
+  console.log(
+    label + ":",
+    info
+  );
+
+
+  // Returned so callers can act on the result: dimensions of
+  // "unavailable" means the bytes are not a decodable image.
+  return info;
 
 }
 
@@ -4052,6 +4348,18 @@ function showResult(record) {
   image.src = record.result;
   image.alt = "Live AI virtual try-on result generated by IDM-VTON";
 
+  // Makes a failed result image visible in the console with the
+  // exact URL that could not be loaded, instead of a silent
+  // broken image inside the popup.
+  image.onerror = function () {
+
+    console.error(
+      "Try-on result image failed to load:",
+      image.src
+    );
+
+  };
+
 
   const actions = document.createElement("div");
   actions.className = "result-actions";
@@ -4167,7 +4475,9 @@ function showDemoResult(
     document.createElement("img");
 
   image.src =
-    data.image_url;
+    resultImageUrl(
+      data
+    );
 
   image.alt =
     "Previously generated IDM-VTON result";
@@ -4187,7 +4497,9 @@ function showDemoResult(
       function () {
 
         downloadResult(
-          data.image_url
+          resultImageUrl(
+            data
+          )
         );
 
       }
